@@ -1,0 +1,15 @@
+[package]
+name = "ep2pc-storage"
+version = "0.1.0"
+edition = "2021"
+description = "Local encrypted storage: SQLCipher schema, outbound queue, cache (EP2PC-007)"
+
+[dependencies]
+# `bundled-sqlcipher-vendored-openssl` compiles SQLCipher *and* OpenSSL from source and
+# links them — the DB file is transparently AES-256 encrypted (EP2PC-007 §7.2), and the
+# build doesn't depend on a system OpenSSL (important for Android NDK cross-compiles).
+# The key comes from Android Keystore.
+rusqlite = { version = "0.31", features = ["bundled-sqlcipher-vendored-openssl"] }
+thiserror = "1"
+ep2pc-engine = { path = "../engine" }
+ep2pc-crypto = { path = "../crypto" }
