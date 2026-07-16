@@ -1,0 +1,9 @@
+[package]
+name = "ep2pc-group"
+version = "0.1.0"
+edition = "2021"
+description = "EP2PC group protocol: membership, admin authorization, mandatory key rotation (EP2PC-006)"
+
+[dependencies]
+ep2pc-crypto = { path = "../crypto" }
+ep2pc-proto = { path = "../proto" }

@@ -1,0 +1,94 @@
+// EP2PC wire schema (EP2PC-005 §5.4, EP2PC-006 §6.2/§6.9).
+//
+// This .proto is the canonical, language-neutral definition. The Rust crate mirrors
+// it with `#[derive(prost::Message)]` structs (see src/lib.rs) so it builds without a
+// protoc toolchain; other language bindings (Kotlin, Swift) can generate from here.
+
+syntax = "proto3";
+package ep2pc.messaging.v1;
+
+// EP2PC-005 §5.3 message type codes.
+enum MessageType {
+  UNKNOWN        = 0;
+  TEXT           = 1;   // 0x01
+  EDIT           = 2;   // 0x02
+  DELETE         = 3;   // 0x03
+  ATTACHMENT     = 4;   // 0x04
+  VOICE          = 5;   // 0x05
+  READ_RECEIPT   = 6;   // 0x06
+  DELIVERY_ACK   = 7;   // 0x07
+  GROUP_CONTROL  = 8;   // 0x08
+  TYPING         = 9;   // 0x09
+}
+
+// EP2PC-004 §4.8 encrypted envelope carried on the wire. `payload` is ALWAYS
+// ChaCha20-Poly1305 ciphertext; plaintext protobuf never touches the network.
+message EncryptedMessage {
+  bytes  message_id     = 1;  // 16 random bytes
+  bytes  sender_id      = 2;  // sender PeerID (Ed25519 pub)
+  bytes  conversation_id = 3;
+  int64  timestamp      = 4;  // informational only
+  bytes  ratchet_header = 5;  // 40 bytes: dh_pub(32) || pn(4) || n(4)
+  bytes  ciphertext     = 6;  // AEAD output (includes auth tag)
+  uint32 cipher_suite   = 7;  // 0 = ChaCha20-Poly1305, 1 = AES-256-GCM
+  bytes  x3dh_ephemeral = 8;  // initiator's X3DH ephemeral pub, first message(s) only
+}
+
+// ---- Decrypted payloads (EP2PC-005 §5.4) ----
+
+message Envelope {
+  bytes  message_id     = 1;
+  uint32 type           = 2;  // MessageType
+  bytes  conversation_id = 3;
+  int64  timestamp      = 4;
+  bytes  payload        = 5;  // one of the *Payload messages below, serialized
+  bytes  reply_to       = 6;  // optional
+}
+
+message TextPayload  { string body = 1; }
+message EditPayload  { bytes target_message_id = 1; string new_body = 2; }
+message DeletePayload { bytes target_message_id = 1; bool delete_for_everyone = 2; }
+
+message AttachmentPayload {
+  string filename      = 1;
+  string mime_type     = 2;
+  uint64 total_size    = 3;
+  uint32 chunk_count   = 4;
+  bytes  sha256        = 5;
+}
+
+message ChunkPayload {
+  bytes  attachment_id = 1;
+  uint32 index         = 2;
+  bytes  data          = 3;  // already AEAD-encrypted per-chunk (EP2PC-005 §5.9)
+}
+
+message VoicePayload {
+  uint32 duration_ms   = 1;
+  bytes  attachment_id = 2;  // Opus data delivered via the chunk mechanism
+}
+
+message DeliveryAck { bytes target_message_id = 1; }
+message ReadReceipt { bytes target_message_id = 1; }
+
+// ---- Group control (EP2PC-006 §6.9) ----
+
+message GroupControlPayload {
+  enum Action {
+    INVITE       = 0;
+    JOIN_ACK     = 1;
+    LEAVE        = 2;
+    REMOVE       = 3;
+    GRANT_ADMIN  = 4;
+    REVOKE_ADMIN = 5;
+    RENAME       = 6;
+    KEY_ROTATION = 7;
+  }
+  Action action        = 1;
+  bytes  target_peer_id = 2;
+  bytes  group_id       = 3;
+  uint32 key_epoch      = 4;
+  bytes  signature      = 5;  // Ed25519 over (action||target||group||epoch)
+  bytes  aux            = 6;  // e.g. wrapped group key on INVITE/KEY_ROTATION
+  bytes  actor          = 7;  // signer's Ed25519 peer id (EP2PC-006 §6.3)
+}
