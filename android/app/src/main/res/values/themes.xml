@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <!-- Base theme; the actual colors are driven by Compose (Theme.kt). -->
-    <style name="Theme.EP2PC" parent="android:Theme.Material.Light.NoActionBar" />
-</resources>
