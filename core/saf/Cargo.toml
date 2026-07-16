@@ -1,8 +1,0 @@
-[package]
-name = "ep2pc-saf"
-version = "0.1.0"
-edition = "2021"
-description = "EP2PC store-and-forward: storage-peer selection, TTL lifecycle, signed ACK (EP2PC-003 §3.7)"
-
-[dependencies]
-ep2pc-crypto = { path = "../crypto" }

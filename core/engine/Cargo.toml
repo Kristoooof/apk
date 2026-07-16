@@ -1,9 +1,0 @@
-[package]
-name = "ep2pc-engine"
-version = "0.1.0"
-edition = "2021"
-description = "EP2PC message engine: ties Double Ratchet sessions (crypto) to the wire format (proto) with pluggable session persistence (EP2PC-004/005/007)"
-
-[dependencies]
-ep2pc-crypto = { path = "../crypto" }
-ep2pc-proto = { path = "../proto" }
