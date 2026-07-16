@@ -452,7 +452,6 @@ fn dispatch_event(ev: ep2pc_net::Event) {
             let Ok(mut guard) = mgr.lock() else { return };
 
             if via_group {
-                // GossipSub group traffic: a signed control or an encrypted group message.
                 let Some(b) = GroupManager::<Store>::parse_broadcast(&bytes) else { return };
                 match guard.apply_broadcast(b) {
                     Ok(Some((group_id, plaintext))) => {
@@ -463,8 +462,6 @@ fn dispatch_event(ev: ep2pc_net::Event) {
                     Err(e) => tracing::warn!("group broadcast from {from}: {e}"),
                 }
             } else {
-                // 1:1 traffic: either an ordinary chat or a group key delivery (routed
-                // internally). This decrypts exactly once (EP2PC-006 §6.6).
                 let Some(peer) = ep2pc_net::ed25519_from_peer_id(&from).map(|k| k.to_vec()) else {
                     return;
                 };
@@ -474,7 +471,6 @@ fn dispatch_event(ev: ep2pc_net::Event) {
                         deliver_message(&mut env, &cb.0, &peer, &plaintext);
                     }
                     Ok(Incoming1to1::GroupKey { group_id }) => {
-                        // We just (re)received a group key; make sure we're subscribed.
                         let _ = core.cmd_tx.try_send(Command::JoinGroup { group_id });
                     }
                     Err(e) => tracing::warn!("decrypt failed from {from}: {e}"),
@@ -494,7 +490,7 @@ fn dispatch_event(ev: ep2pc_net::Event) {
                 }
             }
             // Hand any queued messages for this (offline) peer to storage peers (§3.7).
-                        if let (Some(core), Some(engine), Some(my_peer), Some(conv)) =
+            if let (Some(core), Some(engine), Some(my_peer), Some(conv)) =
                 (CORE.get(), MGR.get(), MY_PEER.get(), ed)
             {
                 if let Ok(mut g) = engine.lock() {
@@ -513,6 +509,7 @@ fn dispatch_event(ev: ep2pc_net::Event) {
                     }
                 }
             }
+        }
         ep2pc_net::Event::ConnectionChanged { peer, connected } => {
             if let Some(ed) = ep2pc_net::ed25519_from_peer_id(&peer) {
                 if let Ok(arr) = env.byte_array_from_slice(&ed) {
@@ -539,7 +536,6 @@ fn dispatch_event(ev: ep2pc_net::Event) {
             let Some(peer) = ep2pc_net::ed25519_from_peer_id(&from).map(|k| k.to_vec()) else {
                 return;
             };
-            // Route like any 1:1 message: ordinary chat -> UI; group key delivery -> absorbed.
             let is_chat = match MGR.get().and_then(|m| m.lock().ok().map(|mut g| g.handle_1to1(&peer, &bytes))) {
                 Some(Ok(Incoming1to1::Chat { plaintext })) => {
                     deliver_message(&mut env, &cb.0, &peer, &plaintext);
