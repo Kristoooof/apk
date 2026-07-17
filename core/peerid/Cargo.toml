@@ -1,5 +1,0 @@
-[package]
-name = "ep2pc-peerid"
-version = "0.1.0"
-edition = "2021"
-description = "Ed25519 <-> libp2p PeerId (identity-multihash) conversion, the single app-wide peer key mapping (EP2PC-003 §3.2)"
