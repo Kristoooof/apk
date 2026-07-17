@@ -510,8 +510,8 @@ fn dispatch_event(ev: ep2pc_net::Event) {
             if let (Some(core), Some(engine), Some(my_peer), Some(conv)) =
                 (CORE.get(), MGR.get(), MY_PEER.get(), ed)
             {
-                if let Ok(mut g) = engine.lock() {
-                    if let Ok(items) = g.backend_mut().outbound_for_conversation(&conv) {
+                                if let Ok(mut g) = engine.lock() {
+                    if let Ok(items) = g.engine_mut().backend_mut().outbound_for_conversation(&conv) {
                         for (mid, blob) in items {
                             let _ = core.cmd_tx.try_send(Command::StoreForward {
                                 recipient: peer.clone(),
@@ -521,7 +521,7 @@ fn dispatch_event(ev: ep2pc_net::Event) {
                                 ttl_ms: ep2pc_saf::DEFAULT_TTL_MS,
                             });
                             // Handed off to storage peers; drop the local queue copy.
-                            let _ = g.backend_mut().dequeue_outbound(&mid);
+                            let _ = g.engine_mut().backend_mut().dequeue_outbound(&mid);
                         }
                     }
                 }
