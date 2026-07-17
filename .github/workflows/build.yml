@@ -48,7 +48,7 @@ jobs:
 
     - name: 9. APK összeállítása
       working-directory: ./android
-      run: ./gradlew assembleDebug --no-daemon
+      run: ./gradlew assembleDebug --no-daemon -x cargoNdkBuild
 
     - name: 10. APK feltöltése letöltésre
       uses: actions/upload-artifact@v4
