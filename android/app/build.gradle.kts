@@ -9,6 +9,7 @@ plugins {
 android {
     namespace = "com.ep2pc"
     compileSdk = 34
+    ndkVersion = "26.1.10909125" // Ide kerül a android blokkba!
 
     defaultConfig {
         applicationId = "com.ep2pc"
@@ -18,8 +19,8 @@ android {
         versionName = "0.1.0"
 
         ndk {
-            // Ship 64-bit primarily (EP2PC-010 §10.4); add 32-bit/x86 as needed.
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+            // Csak a modern 64-bites architektúrát hagyjuk meg a hiba elkerüléséhez
+            abiFilters += "arm64-v8a"
         }
     }
 
