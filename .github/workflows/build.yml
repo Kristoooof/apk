@@ -1,0 +1,57 @@
+name: Build Android APK
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. Kód letöltése
+      uses: actions/checkout@v4
+
+    - name: 2. Java 17 telepítése
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: 3. Android SDK telepítése
+      uses: android-actions/setup-android@v3
+      with:
+        api-level: 34
+        build-tools-version: 34.0.0
+        ndk-version: 26.1.10909125
+
+    - name: 4. Rust telepítése
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        targets: aarch64-linux-android
+
+    - name: 5. Cargo-NDK telepítése
+      run: cargo install cargo-ndk
+
+    - name: 6. Rust Core fordítása (.so fájl)
+      working-directory: ./core
+      run: cargo ndk -t arm64-v8a -o ../android/app/src/main/jniLibs build --release
+
+    - name: 7. Gradle Wrapper generálása (Ha hiányzik)
+      working-directory: ./android
+      run: gradle wrapper --gradle-version 8.0
+
+    - name: 8. Jogosultság adása a Gradle-nek
+      working-directory: ./android
+      run: chmod +x ./gradlew
+
+    - name: 9. APK összeállítása
+      working-directory: ./android
+      run: ./gradlew assembleDebug --no-daemon
+
+    - name: 10. APK feltöltése letöltésre
+      uses: actions/upload-artifact@v4
+      with:
+        name: EP2PC-Debug-APK
+        path: android/app/build/outputs/apk/debug/app-debug.apk
