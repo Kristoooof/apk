@@ -1,0 +1,8 @@
+[package]
+name = "ep2pc-media"
+version = "0.1.0"
+edition = "2021"
+description = "Chunked, per-chunk-authenticated media transfer for files/images/voice (EP2PC-005 §5.9-5.10)"
+
+[dependencies]
+ep2pc-crypto = { path = "../crypto" }

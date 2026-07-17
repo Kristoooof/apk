@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">EP2PC</string>
+    <string name="service_channel_name">EP2PC háttérszolgáltatás</string>
+    <string name="service_running">EP2PC aktív – üzenetek fogadása</string>
+</resources>

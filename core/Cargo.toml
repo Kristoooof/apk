@@ -1,0 +1,14 @@
+[workspace]
+resolver = "2"
+members = ["crypto", "proto", "engine", "saf", "group", "groupmgr", "peerid", "media", "net", "ffi", "storage"]
+
+# The crypto/ and proto/ crates are verified on stable Rust (see repo README).
+# net/, ffi/, storage/ pull libp2p / SQLCipher and require a current stable toolchain
+# (>= 1.83), which the Android cross-build installs anyway.
+
+[profile.release]
+opt-level = "z"      # optimise for size — smaller .so in the APK
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"      # no unwinding across the FFI boundary
