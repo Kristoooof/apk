@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -21,13 +22,40 @@ import com.ep2pc.core.NativeBridge
  */
 class Ep2pcService : Service() {
 
+    // Without a held MulticastLock, Android's Wi-Fi driver drops inbound multicast packets,
+    // so libp2p mDNS never discovers peers on the same LAN (EP2PC-003 §3.4.1). The
+    // CHANGE_WIFI_MULTICAST_STATE permission alone does nothing — the lock must be held.
+    private var multicastLock: WifiManager.MulticastLock? = null
+
     override fun onCreate() {
         super.onCreate()
         startForeground(NOTIF_ID, buildNotification())
+        acquireMulticastLock()
         // The DB key must be fetched from the Android Keystore (EP2PC-007 §7.2).
         val dbKey = KeystoreKeys.getOrCreateDbKey(this)
         val dbPath = filesDir.resolve("ep2pc.db").absolutePath
         NativeBridge.start(dbPath, dbKey)
+    }
+
+    private fun acquireMulticastLock() {
+        try {
+            val wifi = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifi.createMulticastLock("ep2pc-mdns").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            // Non-fatal: mDNS won't work but DHT/bootstrap discovery still can.
+        }
+    }
+
+    override fun onDestroy() {
+        try {
+            multicastLock?.let { if (it.isHeld) it.release() }
+        } catch (_: Exception) {
+        }
+        multicastLock = null
+        super.onDestroy()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
