@@ -53,7 +53,7 @@ const STATUS_SEND_FAILED: i32 = 2;
 #[cfg(target_os = "android")]
 fn init_logging() {
     use android_logger::Config;
-    android_logger::init_once(Config::default().with_max_level(tracing::log::LevelFilter::Info));
+    android_logger::init_once(Config::default().with_max_level(log::LevelFilter::Info));
 }
 #[cfg(not(target_os = "android"))]
 fn init_logging() {
