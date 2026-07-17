@@ -59,6 +59,11 @@ pub async fn handle(
             for (peer, addr) in list {
                 learn_address(swarm, state, peer, addr);
                 let _ = out.send(Event::PeerDiscovered { peer }).await;
+                // Eagerly connect to freshly discovered LAN peers so 1:1 messages flow (and
+                // the UI shows them online) immediately — not only when a send is pending.
+                if !swarm.is_connected(&peer) {
+                    let _ = swarm.dial(peer);
+                }
                 maybe_dial_pending(swarm, state, peer);
             }
         }
@@ -67,7 +72,6 @@ pub async fn handle(
         SwarmEvent::Behaviour(Ep2pcBehaviourEvent::Identify(identify::Event::Received {
             peer_id,
             info,
-            ..
         })) => {
             for addr in info.listen_addrs {
                 learn_address(swarm, state, peer_id, addr);
@@ -165,7 +169,12 @@ pub async fn handle(
 /// Cache an address both in our local book and in Kademlia's routing table.
 fn learn_address(swarm: &mut Swarm<Ep2pcBehaviour>, state: &mut NodeState, peer: PeerId, addr: Multiaddr) {
     if state.remember(peer, addr.clone()) {
-        swarm.behaviour_mut().kademlia.add_address(&peer, addr);
+        swarm.behaviour_mut().kademlia.add_address(&peer, addr.clone());
+        // request_response keeps its OWN dial address book; without this a `send_request`
+        // to a not-yet-connected peer fails with "no addresses" even though mDNS just told
+        // us where the peer is. This is required for 1:1 messages and SAF to reach peers.
+        swarm.behaviour_mut().direct.add_address(&peer, addr.clone());
+        swarm.behaviour_mut().saf.add_address(&peer, addr);
     }
 }
 
