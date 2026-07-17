@@ -40,7 +40,7 @@ jobs:
 
     - name: 7. Gradle Wrapper generálása (Ha hiányzik)
       working-directory: ./android
-      run: gradle wrapper --gradle-version 8.0
+      run: gradle wrapper --gradle-version 8.7
 
     - name: 8. Jogosultság adása a Gradle-nek
       working-directory: ./android
