@@ -1,0 +1,118 @@
+format_version: "13"
+default_step_lib_source: https://github.com/bitrise-io/bitrise-steplib.git
+project_type: android
+
+# EP2PC CI: builds the Rust core (cargo-ndk -> .so) then the Android APK.
+#
+# Recommended Bitrise stack: an Android + Linux stack (Ubuntu) that ships the Android SDK,
+# NDK and JDK 17+. The Rust toolchain is installed by the first script step, so no special
+# stack is required for Rust.
+#
+# Two workflows:
+#   * build-debug   -> app-debug.apk (self-signed, installable) — the reliable default.
+#   * build-release -> app-release.apk (needs signing secrets, see the sign-apk step).
+
+app:
+  envs:
+    - PROJECT_LOCATION: android
+    - MODULE: app
+    - ANDROID_RUST_TARGETS: "aarch64-linux-android armv7-linux-androideabi x86_64-linux-android"
+
+workflows:
+
+  # -------- shared native build (Rust -> jniLibs) --------
+  _rust_native:
+    steps:
+      - script@1:
+          title: Install Rust toolchain + cargo-ndk + Android targets
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                if ! command -v rustup >/dev/null 2>&1; then
+                  curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+                fi
+                source "$HOME/.cargo/env"
+                rustup toolchain install stable --profile minimal
+                rustup default stable
+                rustup target add $ANDROID_RUST_TARGETS
+                command -v cargo-ndk >/dev/null 2>&1 || cargo install cargo-ndk --locked
+      - script@1:
+          title: Build Rust core (cargo-ndk -> jniLibs)
+          inputs:
+            - content: |
+                #!/usr/bin/env bash
+                set -euxo pipefail
+                source "$HOME/.cargo/env"
+
+                # Resolve an installed NDK: prefer $ANDROID_NDK_HOME, else newest under the SDK.
+                if [ -z "${ANDROID_NDK_HOME:-}" ] || [ ! -d "${ANDROID_NDK_HOME:-/nonexistent}" ]; then
+                  if [ -d "$ANDROID_HOME/ndk" ]; then
+                    ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | sort -V | tail -1)"
+                  elif [ -d "$ANDROID_HOME/ndk-bundle" ]; then
+                    ANDROID_NDK_HOME="$ANDROID_HOME/ndk-bundle"
+                  fi
+                fi
+                if [ -z "${ANDROID_NDK_HOME:-}" ] || [ ! -d "$ANDROID_NDK_HOME" ]; then
+                  echo "No NDK found. Add the 'install-missing-android-tools' step or set ANDROID_NDK_HOME."
+                  echo "Tip: yes | sdkmanager 'ndk;26.3.11579264'"
+                  yes | "$ANDROID_HOME"/cmdline-tools/latest/bin/sdkmanager "ndk;26.3.11579264" || true
+                  ANDROID_NDK_HOME="$(ls -d "$ANDROID_HOME"/ndk/*/ 2>/dev/null | sort -V | tail -1)"
+                fi
+                export ANDROID_NDK_HOME
+                echo "Using NDK: $ANDROID_NDK_HOME"
+
+                cd core
+                cargo ndk \
+                  -t arm64-v8a -t armeabi-v7a -t x86_64 \
+                  --platform 26 \
+                  -o ../android/app/src/main/jniLibs \
+                  build -p ep2pc-ffi --release
+                echo "Built native libs:"
+                find ../android/app/src/main/jniLibs -name '*.so' -print
+
+  # -------- debug APK (default, no signing needed) --------
+  build-debug:
+    before_run:
+      - _rust_native
+    steps:
+      - git-clone@8: {}
+      - install-missing-android-tools@3:
+          inputs:
+            - gradlew_path: "$PROJECT_LOCATION/gradlew"
+      - android-build@1:
+          title: Assemble debug APK
+          inputs:
+            - project_location: "$PROJECT_LOCATION"
+            - module: "$MODULE"
+            - variant: "debug"
+            # skipRust=true: the .so are already built above, so Gradle won't invoke cargo.
+            - arguments: "-PskipRust=true"
+      - deploy-to-bitrise-io@2: {}
+
+  # -------- release APK (requires signing) --------
+  # Set these Bitrise secrets/files first:
+  #   BITRISEIO_ANDROID_KEYSTORE_URL, BITRISEIO_ANDROID_KEYSTORE_PASSWORD,
+  #   BITRISEIO_ANDROID_KEYSTORE_ALIAS, BITRISEIO_ANDROID_KEYSTORE_PRIVATE_KEY_PASSWORD
+  build-release:
+    before_run:
+      - _rust_native
+    steps:
+      - git-clone@8: {}
+      - install-missing-android-tools@3:
+          inputs:
+            - gradlew_path: "$PROJECT_LOCATION/gradlew"
+      - android-build@1:
+          title: Assemble release APK
+          inputs:
+            - project_location: "$PROJECT_LOCATION"
+            - module: "$MODULE"
+            - variant: "release"
+            - arguments: "-PskipRust=true"
+      - sign-apk@1:
+          title: Sign release APK
+      - deploy-to-bitrise-io@2: {}
+
+trigger_map:
+  - push_branch: main
+    workflow: build-debug
