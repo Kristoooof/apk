@@ -72,7 +72,6 @@ pub async fn handle(
         SwarmEvent::Behaviour(Ep2pcBehaviourEvent::Identify(identify::Event::Received {
             peer_id,
             info,
-            ..
         })) => {
             for addr in info.listen_addrs {
                 learn_address(swarm, state, peer_id, addr);

@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.GroupAdd
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.QrCode
 import androidx.compose.material.icons.filled.QrCodeScanner
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,7 +27,7 @@ import com.ep2pc.core.NativeBridge
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 
-private enum class Screen { List, Chat, Contacts }
+private enum class Screen { List, Chat, Contacts, Settings }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -40,7 +41,8 @@ fun Ep2pcApp(vm: ChatViewModel = viewModel()) {
             items = vm.conversations,
             onOpen = { openId = it.id; screen = Screen.Chat },
             onContacts = { screen = Screen.Contacts },
-            onNewGroup = { showNewGroup = true }
+            onNewGroup = { showNewGroup = true },
+            onSettings = { screen = Screen.Settings }
         )
         Screen.Chat -> {
             val id = openId
@@ -60,6 +62,7 @@ fun Ep2pcApp(vm: ChatViewModel = viewModel()) {
             onBack = { screen = Screen.List },
             onContactAdded = { peerId -> vm.addContact(peerId, "Új kontakt"); screen = Screen.List }
         )
+        Screen.Settings -> SettingsScreen(onBack = { screen = Screen.List })
     }
 
     if (showNewGroup) {
@@ -76,7 +79,8 @@ private fun ConversationList(
     items: List<Conversation>,
     onOpen: (Conversation) -> Unit,
     onContacts: () -> Unit,
-    onNewGroup: () -> Unit
+    onNewGroup: () -> Unit,
+    onSettings: () -> Unit
 ) {
     Scaffold(
         topBar = {
@@ -85,6 +89,9 @@ private fun ConversationList(
                 actions = {
                     IconButton(onClick = onNewGroup) {
                         Icon(Icons.Filled.GroupAdd, contentDescription = "Új csoport")
+                    }
+                    IconButton(onClick = onSettings) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Beállítások")
                     }
                 }
             )
@@ -276,6 +283,61 @@ private fun ChatScreen(
             onDismiss = { showAddMember = false },
             onPick = { memberId -> onAddMember(memberId); showAddMember = false }
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SettingsScreen(onBack: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var relay by remember { mutableStateOf(com.ep2pc.core.Settings.getRelay(context)) }
+    var saved by remember { mutableStateOf(false) }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Beállítások") },
+                navigationIcon = {
+                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Vissza") }
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            Modifier.padding(padding).fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Relay / szerver cím", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "A VPS-eden futó EP2PC relay címe. Ezen keresztül találják meg egymást a " +
+                    "telefonok és megy át az üzenet akkor is, ha nincsenek egy WiFi-n. " +
+                    "A relay a titkosított adatot csak továbbítja, nem látja.",
+                style = MaterialTheme.typography.bodySmall
+            )
+            OutlinedTextField(
+                value = relay,
+                onValueChange = { relay = it; saved = false },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = false,
+                label = { Text("/ip4/<VPS-IP>/tcp/4001/p2p/12D3Koo...") }
+            )
+            Button(
+                onClick = {
+                    com.ep2pc.core.Settings.setRelay(context, relay)
+                    saved = true
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("Mentés") }
+
+            if (saved) {
+                Text(
+                    "Elmentve. A változás életbe lépéséhez zárd be teljesen és indítsd újra az appot " +
+                        "(a legutóbbi appok közül is húzd ki).",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
     }
 }
 

@@ -34,7 +34,8 @@ class Ep2pcService : Service() {
         // The DB key must be fetched from the Android Keystore (EP2PC-007 §7.2).
         val dbKey = KeystoreKeys.getOrCreateDbKey(this)
         val dbPath = filesDir.resolve("ep2pc.db").absolutePath
-        NativeBridge.start(dbPath, dbKey)
+        val relay = com.ep2pc.core.Settings.getRelay(this)
+        NativeBridge.start(dbPath, dbKey, relay)
     }
 
     private fun acquireMulticastLock() {

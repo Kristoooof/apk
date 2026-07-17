@@ -9,7 +9,6 @@ plugins {
 android {
     namespace = "com.ep2pc"
     compileSdk = 34
-    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.ep2pc"
@@ -19,7 +18,8 @@ android {
         versionName = "0.1.0"
 
         ndk {
-            abiFilters += "arm64-v8a"
+            // Ship 64-bit primarily (EP2PC-010 §10.4); add 32-bit/x86 as needed.
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
@@ -68,9 +68,21 @@ dependencies {
 //   rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
 // The ANDROID_NDK_HOME env var must point at your installed NDK.
 //
-// On CI (Bitrise) the native libs are built in a dedicated script step and this Gradle task
-// is skipped with `-PskipRust=true`, so the Gradle daemon never needs cargo on its PATH.
-val skipRust = (project.findProperty("skipRust") as String?) == "true"
+// On CI the native libs are built in a dedicated script step and this Gradle task is skipped
+// with `-PskipRust=true`, so the Gradle daemon never needs cargo on its PATH.
+//
+// It is ALSO skipped automatically whenever `cargo` isn't on PATH (e.g. Bitrise's default
+// unit-test workflow, which doesn't need the native lib at all). This prevents the
+// "A problem occurred starting process 'command 'cargo''" failure.
+fun cargoOnPath(): Boolean = try {
+    val probe = if (System.getProperty("os.name").lowercase().contains("win"))
+        listOf("where", "cargo") else listOf("which", "cargo")
+    ProcessBuilder(probe).redirectErrorStream(true).start().waitFor() == 0
+} catch (e: Exception) {
+    false
+}
+
+val skipRust = (project.findProperty("skipRust") as String?) == "true" || !cargoOnPath()
 
 val cargoNdkBuild by tasks.registering(Exec::class) {
     onlyIf { !skipRust }

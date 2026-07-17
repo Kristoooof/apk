@@ -13,7 +13,6 @@ jni = "0.21"
 tokio = { version = "1", features = ["rt-multi-thread", "sync"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-log = "0.4"
 
 ep2pc-crypto = { path = "../crypto" }
 ep2pc-proto = { path = "../proto" }

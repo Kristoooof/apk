@@ -53,14 +53,14 @@ const STATUS_SEND_FAILED: i32 = 2;
 #[cfg(target_os = "android")]
 fn init_logging() {
     use android_logger::Config;
-    android_logger::init_once(Config::default().with_max_level(log::LevelFilter::Info));
+    android_logger::init_once(Config::default().with_max_level(tracing::log::LevelFilter::Info));
 }
 #[cfg(not(target_os = "android"))]
 fn init_logging() {
     let _ = tracing_subscriber::fmt::try_init();
 }
 
-/// `external fun nativeInit(callback: EP2PCEventCallback, dbPath: String, dbKey: ByteArray): Long`
+/// `external fun nativeInit(callback: EP2PCEventCallback, dbPath: String, dbKey: ByteArray, relayAddr: String): Long`
 #[no_mangle]
 pub extern "system" fn Java_com_ep2pc_core_NativeBridge_nativeInit(
     mut env: JNIEnv,
@@ -68,8 +68,12 @@ pub extern "system" fn Java_com_ep2pc_core_NativeBridge_nativeInit(
     callback: JObject,
     db_path: JString,
     db_key: JByteArray,
+    relay_addr: JString,
 ) -> jlong {
     init_logging();
+
+    // Relay/bootstrap multiaddr entered by the user in Settings (may be empty).
+    let relay_str: String = env.get_string(&relay_addr).map(|s| s.into()).unwrap_or_default();
 
     // Keep the JVM + callback alive for the process lifetime.
     if let Ok(vm) = env.get_java_vm() {
@@ -164,11 +168,20 @@ pub extern "system" fn Java_com_ep2pc_core_NativeBridge_nativeInit(
                 return;
             }
         };
-        // Bootstrap list comes from user settings (EP2PC-003 §3.5.4); empty = LAN/mDNS only
-        // until the user adds a node. Wire settings through JNI in a later revision.
-        let cfg = NetConfig::default();
+        // Relay/bootstrap node from user settings (EP2PC-003 §3.5.4). When set, the node uses
+        // it both as a DHT bootstrap and as a Circuit Relay so NAT'd peers can reach us.
+        let mut cfg = NetConfig::default();
+        let relay: Option<ep2pc_net::reexport::Multiaddr> = relay_str
+            .trim()
+            .parse()
+            .ok()
+            .filter(|_| !relay_str.trim().is_empty());
+        if let Some(r) = &relay {
+            cfg.relay = Some(r.clone());
+            cfg.bootstrap = vec![r.clone()];
+        }
         match build_swarm(keypair, &cfg) {
-            Ok(swarm) => ep2pc_net::run(swarm, cmd_rx, evt_tx).await,
+            Ok(swarm) => ep2pc_net::run(swarm, cmd_rx, evt_tx, relay).await,
             Err(e) => tracing::error!("build_swarm: {e}"),
         }
     });
@@ -497,8 +510,8 @@ fn dispatch_event(ev: ep2pc_net::Event) {
             if let (Some(core), Some(engine), Some(my_peer), Some(conv)) =
                 (CORE.get(), MGR.get(), MY_PEER.get(), ed)
             {
-                                if let Ok(mut g) = engine.lock() {
-                    if let Ok(items) = g.engine_mut().backend_mut().outbound_for_conversation(&conv) {
+                if let Ok(mut g) = engine.lock() {
+                    if let Ok(items) = g.backend_mut().outbound_for_conversation(&conv) {
                         for (mid, blob) in items {
                             let _ = core.cmd_tx.try_send(Command::StoreForward {
                                 recipient: peer.clone(),
@@ -508,7 +521,7 @@ fn dispatch_event(ev: ep2pc_net::Event) {
                                 ttl_ms: ep2pc_saf::DEFAULT_TTL_MS,
                             });
                             // Handed off to storage peers; drop the local queue copy.
-                            let _ = g.engine_mut().backend_mut().dequeue_outbound(&mid);
+                            let _ = g.backend_mut().dequeue_outbound(&mid);
                         }
                     }
                 }

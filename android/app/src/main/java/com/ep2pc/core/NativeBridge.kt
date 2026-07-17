@@ -42,10 +42,11 @@ object NativeBridge {
 
     @Volatile private var started = false
 
-    /** Start the Rust core. [dbKey] comes from the Android Keystore (EP2PC-007 §7.2). */
-    fun start(dbPath: String, dbKey: ByteArray) {
+    /** Start the Rust core. [dbKey] comes from the Android Keystore (EP2PC-007 §7.2).
+     *  [relayAddr] is the VPS relay/bootstrap multiaddr from Settings (may be empty). */
+    fun start(dbPath: String, dbKey: ByteArray, relayAddr: String) {
         if (started) return
-        nativeInit(callback, dbPath, dbKey)
+        nativeInit(callback, dbPath, dbKey, relayAddr)
         started = true
     }
 
@@ -79,7 +80,8 @@ object NativeBridge {
     private external fun nativeInit(
         callback: EP2PCEventCallback,
         dbPath: String,
-        dbKey: ByteArray
+        dbKey: ByteArray,
+        relayAddr: String
     ): Long
 
     // The core encrypts the plaintext Envelope with the peer's Double Ratchet session

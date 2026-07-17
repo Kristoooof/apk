@@ -149,7 +149,20 @@ fn connect_peer(swarm: &mut Swarm<Ep2pcBehaviour>, state: &mut NodeState, peer: 
             return;
         }
     }
-    // No address yet — resolve via DHT and remember the intent.
+    // No direct address (peer is behind NAT). If a relay is configured, reach the peer at
+    // `<relay>/p2p-circuit/p2p/<peer>` — we know the peer's id from the QR exchange and the
+    // relay from settings, so no lookup is needed (EP2PC-003 §3.6).
+    if let Some(relay) = state.relay.clone() {
+        let circuit = relay
+            .with(libp2p::core::multiaddr::Protocol::P2pCircuit)
+            .with(libp2p::core::multiaddr::Protocol::P2p(peer));
+        swarm.behaviour_mut().direct.add_address(&peer, circuit.clone());
+        swarm.behaviour_mut().saf.add_address(&peer, circuit.clone());
+        state.remember(peer, circuit.clone());
+        let _ = swarm.dial(circuit);
+        return;
+    }
+    // No relay either — resolve via DHT and remember the intent.
     state.pending_dial.insert(peer);
     swarm.behaviour_mut().kademlia.get_closest_peers(peer);
 }

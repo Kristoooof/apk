@@ -121,6 +121,10 @@ pub enum NetError {
 pub struct NetConfig {
     /// Bootstrap peers to dial on startup (EP2PC-003 §3.5). User-editable.
     pub bootstrap: Vec<Multiaddr>,
+    /// Relay node base multiaddr (e.g. `/ip4/1.2.3.4/tcp/4001/p2p/12D3...`). When set, the
+    /// node reserves a slot here so NAT'd peers can reach it at `<relay>/p2p-circuit/p2p/<us>`
+    /// (EP2PC-003 §3.6). This is the reliable path when mDNS/direct connections fail.
+    pub relay: Option<Multiaddr>,
     /// Adaptive keep-alive interval in seconds (EP2PC-003 §3.8).
     pub keepalive_secs: u64,
     /// Enable QUIC in addition to TCP (EP2PC-003 §3.1, off by default).
@@ -131,6 +135,7 @@ impl Default for NetConfig {
     fn default() -> Self {
         Self {
             bootstrap: Vec::new(),
+            relay: None,
             keepalive_secs: 300, // 5 min baseline for mobile NAT (§3.8)
             enable_quic: false,
         }
@@ -245,6 +250,21 @@ pub fn build_swarm(
     }
     let _ = swarm.behaviour_mut().kademlia.bootstrap();
 
+    // Connect to the relay and reserve a slot so NAT'd peers can reach us through it
+    // (EP2PC-003 §3.6). Our relayed address becomes `<relay>/p2p-circuit/p2p/<our PeerId>`.
+    if let Some(relay) = &cfg.relay {
+        if let Some(relay_peer) = extract_peer_id(relay) {
+            swarm.behaviour_mut().kademlia.add_address(&relay_peer, relay.clone());
+        }
+        if let Err(e) = swarm.dial(relay.clone()) {
+            tracing::warn!("relay dial failed: {e}");
+        }
+        let circuit = relay.clone().with(libp2p::multiaddr::Protocol::P2pCircuit);
+        if let Err(e) = swarm.listen_on(circuit) {
+            tracing::warn!("relay reservation failed: {e}");
+        }
+    }
+
     Ok(swarm)
 }
 
@@ -289,8 +309,10 @@ pub async fn run(
     mut swarm: Swarm<Ep2pcBehaviour>,
     mut commands: mpsc::Receiver<Command>,
     events: mpsc::Sender<Event>,
+    relay: Option<Multiaddr>,
 ) {
     let mut state = NodeState::default();
+    state.relay = relay;
     loop {
         tokio::select! {
             // Park here at 0% CPU until something happens.
@@ -315,6 +337,8 @@ pub struct NodeState {
     pub pending_dial: std::collections::HashSet<PeerId>,
     /// Messages this node is holding *as a storage peer* for others (EP2PC-003 §3.7).
     pub saf_store: ep2pc_saf::SafStore,
+    /// Configured relay base multiaddr, used to reach NAT'd peers via a circuit address.
+    pub relay: Option<Multiaddr>,
 }
 
 impl NodeState {
